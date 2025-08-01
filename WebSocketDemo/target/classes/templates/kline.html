@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>币安K线图</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        #chart-container {
+            width: 100%;
+            height: 600px;
+            background: #ffffff;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .symbol-selector {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        .status-connected {
+            color: #28a745;
+        }
+        .status-disconnected {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>币安K线图</h1>
+        <select id="symbol" class="symbol-selector">
+            <option value="btcusdt">BTC/USDT</option>
+            <option value="ethusdt">ETH/USDT</option>
+            <option value="bnbusdt">BNB/USDT</option>
+        </select>
+    </div>
+    <div id="status">连接状态: 未连接</div>
+    <div id="chart-container"></div>
+
+    <script>
+        // 创建图表
+        const chartContainer = document.getElementById('chart-container');
+        const statusDiv = document.getElementById('status');
+        const chart = LightweightCharts.createChart(chartContainer, {
+            width: chartContainer.clientWidth,
+            height: chartContainer.clientHeight,
+            layout: {
+                background: { color: '#ffffff' },
+                textColor: '#333',
+            },
+            grid: {
+                vertLines: { color: '#f0f0f0' },
+                horzLines: { color: '#f0f0f0' },
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+            },
+        });
+
+        // 创建K线图系列
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderVisible: false,
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350',
+        });
+
+        // 创建成交量图系列
+        const volumeSeries = chart.addHistogramSeries({
+            color: '#26a69a',
+            priceFormat: {
+                type: 'volume',
+            },
+            priceScaleId: '',
+            scaleMargins: {
+                top: 0.8,
+                bottom: 0,
+            },
+        });
+
+        // 处理窗口大小变化
+        window.addEventListener('resize', () => {
+            chart.applyOptions({
+                width: chartContainer.clientWidth,
+                height: chartContainer.clientHeight,
+            });
+        });
+
+        // WebSocket连接
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const symbolSelect = document.getElementById('symbol');
+
+        function updateStatus(message, isConnected) {
+            statusDiv.textContent = `连接状态: ${message}`;
+            statusDiv.className = isConnected ? 'status-connected' : 'status-disconnected';
+        }
+
+        function connectWebSocket() {
+            if (ws) {
+                console.log('关闭现有连接');
+                ws.close();
+            }
+
+            const symbol = symbolSelect.value;
+            const wsUrl = `ws://${window.location.host}/ws/kline/${symbol}`;
+            console.log('正在连接到:', wsUrl);
+            
+            updateStatus('正在连接...', false);
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket连接已建立');
+                updateStatus('已连接', true);
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    console.log('收到数据:', event.data);
+                    const data = JSON.parse(event.data);
+                    const candleData = {
+                        time: data.time / 1000,
+                        open: data.open,
+                        high: data.high,
+                        low: data.low,
+                        close: data.close,
+                    };
+                    const volumeData = {
+                        time: data.time / 1000,
+                        value: data.volume,
+                        color: data.close >= data.open ? '#26a69a' : '#ef5350',
+                    };
+
+                    candlestickSeries.update(candleData);
+                    volumeSeries.update(volumeData);
+                } catch (error) {
+                    console.error('处理数据失败:', error, event.data);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log('WebSocket连接已关闭:', event.code, event.reason);
+                updateStatus('已断开连接', false);
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    console.log(`尝试重新连接 (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                    setTimeout(connectWebSocket, 1000 * Math.min(reconnectAttempts, 5));
+                } else {
+                    updateStatus('连接失败，请刷新页面重试', false);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket错误:', error);
+                updateStatus('连接错误', false);
+            };
+        }
+
+        // 监听交易对选择变化
+        symbolSelect.addEventListener('change', () => {
+            console.log('切换交易对:', symbolSelect.value);
+            reconnectAttempts = 0;
+            connectWebSocket();
+        });
+
+        // 初始连接
+        connectWebSocket();
+    </script>
+</body>
+</html> 

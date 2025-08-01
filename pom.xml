@@ -15,9 +15,8 @@
 		<module>JavaBase</module>
 		<module>JUC</module>
 		<module>JVM</module>
-        <module>LocalCache</module>
-		<module>DesignPattern</module>
 		<module>WebSocketDemo</module>
+		<module>DesignPattern</module>
 	</modules>
 
 	<properties>
